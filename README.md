@@ -47,6 +47,6 @@
 ​	•	为每个站点生成雷达图，展示不同 POI 类型的评分分布。
 
 **可视化示例**
-![Logo](images/1.png)
-![Logo](images/2.png)
+![1](img/1.png)
+![2](img/2.png)
 
