@@ -58,3 +58,5 @@ subway-react/.pnp.js
 # React specific
 .cache/
 coverage/
+
+output.csv
