@@ -12,6 +12,8 @@ function App() {
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(24);
   const [stationAnalysis, setStationAnalysis] = useState(null);
   const [selectedStation, setSelectedStation] = useState(null);
+  const [stationTypeData, setStationTypeData] = useState(null);
+  const [stationPoisData, setStationPoisData] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -114,10 +116,11 @@ function App() {
 
   const handleStationClick = async (event) => {
     const point = event.points[0];
-    const stationName = point.text;
+    const stationName = point.text.split('<br>')[0]; // Get only the station name part
     setSelectedStation(stationName);
 
     try {
+      // 获取站点分析数据
       const response = await fetch(
         `${API_BASE_URL}/station_analysis?station=${encodeURIComponent(stationName)}&time_slot=${selectedTimeSlot}`,
         {
@@ -136,8 +139,48 @@ function App() {
 
       const analysisData = await response.json();
       setStationAnalysis(analysisData);
+
+      // 获取站点类型数据
+      const typeResponse = await fetch(
+        `${API_BASE_URL}/station_type?station=${encodeURIComponent(stationName)}`,
+        {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (typeResponse.ok) {
+        const typeData = await typeResponse.json();
+        setStationTypeData(typeData);
+      } else {
+        setStationTypeData(null);
+      }
+
+      // 获取站点POIs数据
+      const poisResponse = await fetch(
+        `${API_BASE_URL}/station_pois?station=${encodeURIComponent(stationName)}`,
+        {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (poisResponse.ok) {
+        const poisData = await poisResponse.json();
+        setStationPoisData(poisData);
+      } else {
+        setStationPoisData(null);
+      }
     } catch (err) {
-      console.error('Error fetching station analysis:', err);
+      console.error('Error fetching data:', err);
       setError(err.message);
     }
   };
@@ -226,12 +269,17 @@ function App() {
           borderRadius: '5px',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
           width: '600px',
-          height: '400px'
+          maxHeight: '80vh',
+          overflowY: 'auto'
         }}>
           <h2 style={{ margin: '0 0 10px 0', fontSize: '1.2em', textAlign: 'center' }}>
             {selectedStation} Station Passenger Flow Analysis
           </h2>
-          <StationSankeyFlow analysisData={stationAnalysis} />
+          <StationSankeyFlow 
+            analysisData={stationAnalysis} 
+            typeData={stationTypeData}
+            poisData={stationPoisData}
+          />
         </div>
       )}
 

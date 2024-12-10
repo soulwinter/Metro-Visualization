@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import pandas as pd
+import numpy as np
 
 app = Flask(__name__)
 # 明确指定CORS配置
@@ -9,13 +10,16 @@ CORS(app)
 # 缓存数据
 stations_data = None
 flow_data = None
+station_type_data = None
+station_pois_data = None  # 新增POIs数据缓存
 
 def load_data():
-    global stations_data, flow_data
+    global stations_data, flow_data, station_type_data, station_pois_data
     if stations_data is None:
         # 读取站点坐标数据
         stations_df = pd.read_csv('../public/station_coordinates.csv')
-        stations_data = stations_df.dropna().to_dict('records')
+        stations_data = stations_df.to_dict('records')
+        print("Loaded stations:", [station['站名'] for station in stations_data])  # 调试信息
     
     if flow_data is None:
         # 读取并处理流量数据
@@ -42,6 +46,16 @@ def load_data():
             flow_by_time.extend(flow_summary.to_dict('records'))
         
         flow_data = flow_by_time
+
+    if station_type_data is None:
+        # 读取站点类型数据
+        type_df = pd.read_csv('../public/station_type.csv')
+        station_type_data = type_df.set_index('站名').to_dict('index')
+
+    if station_pois_data is None:
+        # 读取站点POIs数据
+        pois_df = pd.read_csv('../public/station_around.csv')
+        station_pois_data = pois_df.set_index('站名')['POIs'].apply(eval).to_dict()
 
 @app.route('/api/stations')
 def get_stations():
@@ -131,6 +145,102 @@ def analyze_station():
             'top5': exit_stations_top5,
             'others': int(exit_stations_others)
         }
+    })
+
+@app.route('/api/station_type')
+def get_station_type():
+    """获取特定站点的类型数据"""
+    station = request.args.get('station')
+    
+    if not station:
+        return jsonify({'error': '未提供站点名称'}), 400
+        
+    if station_type_data is None:
+        load_data()
+    
+    # 查找站点数据
+    station_data = station_type_data.get(station)
+    if not station_data:
+        return jsonify({'error': '未找到该站点的类型数据'}), 404
+    
+    # 准备雷达图数据
+    categories = ['Hospital', 'School', 'Business', 'Science', 'Office', 'Transportation', 'Residential']
+    raw_values = [float(station_data[f'类型{i+1}得分']) for i in range(7)]
+    
+    # 数据处理:
+    # 1. 对数变换来减小差异
+    log_values = [np.log1p(v) if v > 0 else 0 for v in raw_values]
+    
+    # 2. Min-Max标准化到0-100范围，保持0还是0
+    non_zero_values = [v for v in log_values if v > 0]
+    if non_zero_values:
+        min_val = min(non_zero_values)
+        max_val = max(log_values)
+        scaled_values = [
+            round((v - min_val) / (max_val - min_val) * 100 if v > 0 else 0, 1)
+            for v in log_values
+        ]
+    else:
+        scaled_values = [0] * 7
+    
+    # 3. 如果所有值都很小，给它们一个最小值以便在图上显示
+    if max(scaled_values) < 10:
+        scaled_values = [v * 3 for v in scaled_values]
+    
+    return jsonify({
+        'categories': categories,
+        'values': scaled_values,
+        'raw_values': raw_values  # 同时返回原始值，以便需要时使用
+    })
+
+@app.route('/api/station_pois')
+def get_station_pois():
+    """获取特定站点的POIs和位置信息"""
+    station = request.args.get('station')
+    
+    if not station:
+        return jsonify({'error': '未提供站点名称'}), 400
+        
+    if station_pois_data is None or stations_data is None:
+        load_data()
+    
+    print("Looking for station:", station)  # 调试信息
+    print("Available stations:", [s['站名'] for s in stations_data])  # 调试信息
+    
+    # 获取站点POIs数据
+    pois = station_pois_data.get(station)
+    if not pois:
+        return jsonify({'error': '未找到该站点的POIs数据'}), 404
+    
+    # 获取站点位置信息
+    station_info = None
+    for s in stations_data:
+        if s['站名'] == station:
+            station_info = s
+            break
+    
+    if not station_info:
+        return jsonify({'error': f'未找到站点 {station} 的位置信息'}), 404
+    
+    # 处理POIs数据
+    processed_pois = []
+    for poi in pois:
+        processed_pois.append({
+            'name': poi['name'],
+            'type': poi['location']['type'],
+            'original_type': poi['location']['original_type'],
+            'location': {
+                'x': poi['location']['x'],
+                'y': poi['location']['y']
+            }
+        })
+    
+    return jsonify({
+        'station_location': {
+            'x': float(station_info['经度']),  # 确保转换为float
+            'y': float(station_info['纬度'])   # 确保转换为float
+        },
+        'pois': processed_pois
     })
 
 if __name__ == '__main__':

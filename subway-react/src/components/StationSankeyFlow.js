@@ -1,14 +1,21 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactFlow, {
   useNodesState,
   useEdgesState,
   Position,
 } from 'reactflow';
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import 'reactflow/dist/style.css';
 
-const StationSankeyFlow = ({ analysisData }) => {
+const StationSankeyFlow = ({ analysisData, typeData, poisData }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   useEffect(() => {
     if (!analysisData) {
@@ -301,22 +308,165 @@ const StationSankeyFlow = ({ analysisData }) => {
   if (!analysisData) return null;
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        fitView
-        attributionPosition="bottom-left"
-        defaultEdgeOptions={{
-          type: 'default',
-          style: { strokeWidth: 2 },
-          markerEnd: {
-            type: 'arrow',
-          },
-        }}
-      />
+    <div>
+      <div style={{ width: '100%', height: '400px' }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          fitView
+          attributionPosition="bottom-left"
+          defaultEdgeOptions={{
+            type: 'default',
+            style: { strokeWidth: 2 },
+            markerEnd: {
+              type: 'arrow',
+            },
+          }}
+        />
+      </div>
+
+      {/* POIs分布图 */}
+      {poisData && (
+        <div style={{ width: '100%', height: '400px', marginTop: '20px', backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ textAlign: 'center', marginBottom: '20px' }}>POIs Distribution</h3>
+          <div style={{ width: '100%', height: '320px', position: 'relative' }}>
+            <svg width="100%" height="100%" viewBox="-150 -150 300 300">
+              {/* 中心站点 */}
+              <circle
+                cx={0}
+                cy={0}
+                r={30}
+                fill="#1f77b4"
+                opacity={0.8}
+              />
+              <text
+                x={0}
+                y={0}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="white"
+                fontSize="12px"
+              >
+                Station
+              </text>
+              
+              {/* POIs点 */}
+              {poisData.pois.map((poi, index) => {
+                // 计算经纬度差值
+                const dx = poi.location.x - poisData.station_location.x;
+                const dy = poi.location.y - poisData.station_location.y;
+                
+                // 将经纬度差值转换为像素坐标
+                // 经度1度约等于111km，纬度1度约等于111km
+                // 将差值转换为米，然后缩放到合适的显示范围
+                const scale = 50000; // 调整这个值来改变分布范围
+                const x = dx * Math.cos(poisData.station_location.y * Math.PI / 180) * scale;
+                const y = -dy * scale; // 反转y轴方向
+                
+                // 根据POI类型选择颜色
+                const colors = {
+                  1: '#ff7f0e', // 医疗
+                  2: '#2ca02c', // 教育
+                  3: '#d62728', // 商业
+                  4: '#9467bd', // 办公
+                  5: '#8c564b', // 住宅
+                  6: '#e377c2', // 交通
+                  7: '#7f7f7f', // 其他
+                };
+
+                // 限制显示范围，防止点太远
+                const maxRange = 140; // viewBox的范围是-150到150
+                const clampedX = Math.max(Math.min(x, maxRange), -maxRange);
+                const clampedY = Math.max(Math.min(y, maxRange), -maxRange);
+                
+                return (
+                  <g key={index}>
+                    <circle
+                      cx={clampedX}
+                      cy={clampedY}
+                      r={10}
+                      fill={colors[poi.type] || '#7f7f7f'}
+                      opacity={0.6}
+                    />
+                    <title>{`${poi.name} (${(dx * 111).toFixed(2)}km, ${(dy * 111).toFixed(2)}km)`}</title>
+                  </g>
+                );
+              })}
+            </svg>
+            
+            {/* 图例 */}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' }}>
+              {[
+                { type: 1, name: 'Hospital', color: '#ff7f0e' },
+                { type: 2, name: 'Education', color: '#2ca02c' },
+                { type: 3, name: 'Business', color: '#d62728' },
+                { type: 4, name: 'Office', color: '#9467bd' },
+                { type: 5, name: 'Residential', color: '#8c564b' },
+                { type: 6, name: 'Transportation', color: '#e377c2' },
+                { type: 7, name: 'Others', color: '#7f7f7f' },
+              ].map(item => (
+                <div key={item.type} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: item.color }} />
+                  <span style={{ fontSize: '12px', color: '#666' }}>{item.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 站点类型雷达图 */}
+      {typeData && (
+        <div style={{ width: '100%', height: '400px', marginTop: '20px', backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ textAlign: 'center', marginBottom: '20px' }}>Station Around</h3>
+          <div style={{ width: '100%', height: '320px', display: 'flex', justifyContent: 'center' }}>
+            <RadarChart 
+              width={500} 
+              height={300} 
+              data={typeData.categories.map((category, index) => ({
+                category,
+                value: typeData.values[index],
+                fullMark: 100
+              }))}
+              style={{ marginLeft: '-50px' }}
+            >
+              <PolarGrid stroke="#e6e6e6" />
+              <PolarAngleAxis 
+                dataKey="category" 
+                tick={{ 
+                  fill: '#666', 
+                  fontSize: 12,
+                  dy: 3,
+                }}
+                tickLine={{ stroke: '#ccc' }}
+              />
+              <PolarRadiusAxis 
+                angle={90} 
+                domain={[0, 100]} 
+                tick={{ fill: '#666', fontSize: 12 }}
+                stroke="#ccc"
+              />
+              <Radar
+                name="Station Around"
+                dataKey="value"
+                stroke="#8884d8"
+                fill="#8884d8"
+                fillOpacity={0.6}
+              />
+            </RadarChart>
+          </div>
+          {/* 显示原始值 */}
+          {typeData.raw_values && (
+            <div style={{ marginTop: '10px', fontSize: '12px', color: '#666', textAlign: 'center' }}>
+              Data: {typeData.categories.map((category, index) => (
+                `${category}: ${typeData.raw_values[index].toFixed(1)}`
+              )).join(' | ')}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
