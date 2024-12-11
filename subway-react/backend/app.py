@@ -247,4 +247,4 @@ if __name__ == '__main__':
     # 预加载数据
     load_data()
     # 启动服务器
-    app.run(port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
